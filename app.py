@@ -142,6 +142,17 @@ def list_people_dataset():
 
     return people
 
+def translate_decision(decision: str) -> str:
+    mapping = {
+        "no_face": "未检测到人脸",
+        "read_failed": "文件读取失败",
+        "face_detected_unknown": "检测到人脸，未匹配到已知人员",
+        "face_detected_known": "检测到人脸，已匹配到已知人员",
+    }
+
+    return mapping.get(decision, decision)
+
+
 
 def main():
     ensure_dirs()
@@ -172,13 +183,7 @@ def main():
             "阈值越低越宽松，但更容易误认。"
         )
 
-        if st.button("清空 input"):
-            clear_dir(INPUT_DIR)
-            st.success("已清空 input")
 
-        if st.button("清空 output"):
-            clear_dir(OUTPUT_DIR)
-            st.success("已清空 output")
 
     face_app = load_cached_face_app(use_gpu)
 
@@ -186,20 +191,32 @@ def main():
     ["1. 建立人脸库", "2. 识别图片/视频", "3. 查看结果", "4. 特征库状态"]
     )
 
+    if "known_uploader_key" not in st.session_state:
+        st.session_state.known_uploader_key = 0
+
+    if "input_uploader_key" not in st.session_state:
+        st.session_state.input_uploader_key = 0
+
 
     with tab1:
         st.subheader("上传已知人员照片")
-
+        
         person_name = st.text_input(
             "人物名称",
             placeholder="例如 zhangsan / lisi / alice"
         )
-
+        
+        
         known_files = st.file_uploader(
             "上传这个人的照片或视频。视频会自动抽取多帧加入人脸库。",
             type=["jpg", "jpeg", "png", "webp", "mp4", "avi", "mov", "mkv"],
-            accept_multiple_files=True
+            accept_multiple_files=True,
+            key=f"known_files_{st.session_state.known_uploader_key}"
         )
+
+        if st.button("清空当前上传选择", key="clear_known_uploader"):
+            st.session_state.known_uploader_key += 1
+            st.rerun()
 
 
         if st.button("保存到 dataset"):
@@ -240,12 +257,6 @@ def main():
                     st.write(log)
 
 
-            st.success(f"人脸库生成完成，共 {len(gallery)} 个人。")
-
-            with st.expander("查看处理日志"):
-                for log in logs:
-                    st.write(log)
-
         st.divider()
 
         st.subheader("当前 dataset")
@@ -261,12 +272,24 @@ def main():
     with tab2:
         st.subheader("上传待识别图片或视频")
 
+        if st.button("清空 input 上传文件", key="clear_input_tab2"):
+            clear_dir(INPUT_DIR)
+            st.success("已清空 input 上传文件。")
+
+
+        
+        
         input_files = st.file_uploader(
             "支持图片和视频。视频会自动抽取一帧进行识别。",
             type=["jpg", "jpeg", "png", "webp", "mp4", "avi", "mov", "mkv"],
-            accept_multiple_files=True
+            accept_multiple_files=True,
+            key=f"input_files_{st.session_state.input_uploader_key}"
         )
 
+        if st.button("清空当前上传选择", key="clear_input_uploader"):
+            st.session_state.input_uploader_key += 1
+            st.rerun()
+        
         if st.button("保存到 input"):
             if not input_files:
                 st.error("请先上传文件。")
@@ -292,6 +315,7 @@ def main():
                         [
                             {
                                 "filename": r["filename"],
+                                "face_check": translate_decision(r.get("decision", "")),
                                 "label": r["label"],
                                 "score": round(r["score"], 4),
                                 "source_info": r["source_info"],
@@ -301,12 +325,19 @@ def main():
                         use_container_width=True
                     )
 
+
+
             except Exception as e:
                 st.error(str(e))
 
     with tab3:
         st.subheader("分类结果")
 
+        if st.button("清空 output 识别结果", key="clear_output_tab3"):
+            clear_dir(OUTPUT_DIR)
+            st.success("已清空 output 识别结果。")
+
+        
         if not OUTPUT_DIR.exists():
             st.warning("还没有 output 目录。")
             return
@@ -401,6 +432,7 @@ def main():
                 )
             else:
                 st.write("缓存里还没有图片记录。")
+
 
 
 if __name__ == "__main__":

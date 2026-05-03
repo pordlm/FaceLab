@@ -45,20 +45,46 @@ def get_face_area(face) -> float:
     return float((x2 - x1) * (y2 - y1))
 
 
-def extract_embedding(face_app, img):
+def detect_largest_face(face_app, img):
     """
+    只做人脸检测，不提取身份。
+
     返回:
-        embedding, face
-    如果没有检测到人脸:
-        None, None
+        face, faces
     """
     faces = face_app.get(img)
     face = get_largest_face(faces)
 
+    return face, faces
+
+
+def extract_embedding_from_face(face):
+    """
+    从已经检测到的人脸对象中提取 embedding。
+    """
     if face is None:
-        return None, None
+        return None
 
     emb = face.embedding.astype(np.float32)
     emb = l2_normalize(emb)
 
+    return emb
+
+
+def extract_embedding(face_app, img):
+    """
+    兼容旧代码的函数：
+    检测最大人脸并提取 embedding。
+
+    返回:
+        embedding, face
+    """
+    face, faces = detect_largest_face(face_app, img)
+
+    if face is None:
+        return None, None
+
+    emb = extract_embedding_from_face(face)
+
     return emb, face
+

@@ -101,21 +101,34 @@ def classify_all(
             results.append(
                 {
                     "filename": file_path.name,
-                    "label": "unknown",
+                    "label": "read_failed",
                     "score": 0.0,
+                    "decision": "read_failed",
                     "source_info": source_info,
                     "output_path": "",
                 }
             )
+
             continue
 
         emb, face = extract_embedding(face_app, img)
 
-        if emb is None:
-            label = "unknown"
+        if face is None:
+            label = "no_face"
             score = 0.0
+            decision = "no_face"
+        elif emb is None:
+            label = "no_face"
+            score = 0.0
+            decision = "no_face"
         else:
             label, score = predict_person(emb, gallery, threshold)
+
+            if label == "unknown":
+                decision = "face_detected_unknown"
+            else:
+                decision = "face_detected_known"
+
 
         person_output_dir = output_dir / label
         person_output_dir.mkdir(parents=True, exist_ok=True)
@@ -132,9 +145,11 @@ def classify_all(
                 "filename": file_path.name,
                 "label": label,
                 "score": float(score),
+                "decision": decision,
                 "source_info": source_info,
                 "output_path": str(dst_path),
             }
         )
+
 
     return results

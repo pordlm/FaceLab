@@ -15,6 +15,8 @@ FaceLab 是一个基于 InsightFace 和 Streamlit 的本地人脸识别实验项
 - 支持查看 `gallery.pkl` 和 `embedding_cache.pkl` 的概要状态
 - 支持将识别结果按人员名称输出到不同文件夹
 - 支持将分类结果导出为 ZIP 文件
+- 支持先判断图片或视频帧中是否存在人脸，再进行身份识别
+- 支持将识别结果区分为已知人员、`unknown`、`no_face` 和 `read_failed`
 
 ## 技术栈
 
@@ -191,6 +193,14 @@ output/
   unknown/
     unknown_photo.jpg
 ```
+在“识别图片/视频”页面可以清空 `input/` 上传文件；在“查看结果”页面可以清空 `output/` 识别结果。
+
+识别结果说明：
+
+- 已知人员名称：检测到人脸，并成功匹配到人脸库中的人员
+- `unknown`：检测到人脸，但未匹配到已知人员
+- `no_face`：未检测到人脸
+- `read_failed`：文件读取失败
 
 ### 3. 查看特征库状态
 
