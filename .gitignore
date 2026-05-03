@@ -1,0 +1,54 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# Local biometric data and runtime data
+dataset/*
+input/*
+output/*
+
+# Keep folder structure
+!dataset/.gitkeep
+!input/.gitkeep
+!output/.gitkeep
+
+# Generated biometric feature files
+gallery.pkl
+embedding_cache.pkl
+*.pkl
+
+# Exported results
+classified_output.zip
+*.zip
+
+# Local media files
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Logs
+*.log
