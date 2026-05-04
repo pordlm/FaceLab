@@ -1,1 +1,3 @@
-E:\Anaconda3\envs\facelab\python.exe -m streamlit run g:\facelab\app.py
+$ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $ProjectDir
+python -m streamlit run app.py
