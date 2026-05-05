@@ -2,7 +2,7 @@
 
 FaceLab 是一个基于 InsightFace 和 Streamlit 的本地人脸识别实验项目。项目支持从图片或视频中提取人脸特征，建立本地人脸特征库，并对待识别图片或视频进行身份匹配。
 
-本项目主要用于本地学习、实验和原型验证，不适合作为生产环境门禁系统直接使用。
+本项目主要用于本地学习、实验和原型验证，不适合作为生产环境门禁、考勤或安防系统直接使用。
 
 ## 功能特性
 
@@ -10,13 +10,17 @@ FaceLab 是一个基于 InsightFace 和 Streamlit 的本地人脸识别实验项
 - 支持通过视频抽帧建立本地人脸库
 - 支持图片识别
 - 支持视频抽帧识别
-- 支持人脸特征缓存，避免重复提取已有图片特征
-- 支持在图形化界面中查看已入库人员信息
-- 支持查看 `gallery.pkl` 和 `embedding_cache.pkl` 的概要状态
-- 支持将识别结果按人员名称输出到不同文件夹
-- 支持将分类结果导出为 ZIP 文件
 - 支持先判断图片或视频帧中是否存在人脸，再进行身份识别
 - 支持将识别结果区分为已知人员、`unknown`、`no_face` 和 `read_failed`
+- 支持视频识别结果同时输出原始视频和用于预览的抽帧图片
+- 支持人脸特征缓存，避免重复提取已有注册图片特征
+- 支持在图形化界面中查看已入库人员信息
+- 支持查看 `gallery.pkl` 和 `embedding_cache.pkl` 的概要状态
+- 支持分类结果自检，检查读取失败、输出缺失等问题
+- 支持对部分问题文件进行重新分类
+- 支持将识别结果按人员名称输出到不同文件夹
+- 支持将分类结果导出为 ZIP 文件
+- 支持在界面中清空 `input/` 上传文件和 `output/` 识别结果
 
 ## 技术栈
 
@@ -38,6 +42,7 @@ facelab/
   face_engine.py
   gallery_builder.py
   classifier.py
+  self_check.py
   video_utils.py
   image_io.py
   pkl_viewer.py
@@ -62,8 +67,9 @@ facelab/
 | `app.py` | Streamlit 图形化界面入口 |
 | `config.py` | 路径、文件类型、默认参数配置 |
 | `face_engine.py` | InsightFace 模型加载、人脸检测、特征提取、相似度计算 |
-| `gallery_builder.py` | 从 `dataset/` 中提取人脸特征，生成 `gallery.pkl` |
-| `classifier.py` | 对 `input/` 中的图片或视频进行识别分类 |
+| `gallery_builder.py` | 从 `dataset/` 中提取人脸特征，生成 `gallery.pkl` 和 `embedding_cache.pkl` |
+| `classifier.py` | 对 `input/` 中的图片或视频进行识别分类，并生成分类结果 |
+| `self_check.py` | 对识别结果进行自检，检查读取失败和输出缺失等问题 |
 | `video_utils.py` | 视频抽帧相关逻辑 |
 | `image_io.py` | 图片读取与保存工具 |
 | `pkl_viewer.py` | 读取并展示特征库和缓存文件的概要信息 |
@@ -130,7 +136,6 @@ Set-Location $ProjectDir
 
 python -m streamlit run app.py
 ```
-
 ## 使用流程
 
 ### 1. 建立人脸库
@@ -148,7 +153,7 @@ lisi
 
 如果上传图片，程序会直接保存到对应人员目录。
 
-如果上传视频，程序会自动抽取包含人脸的帧，并将抽帧结果保存为图片。
+如果上传视频，程序会自动抽取包含人脸的帧，并将抽帧结果保存为图片。注册人脸库时的视频建议只包含单人，避免把其他人的人脸抽入该人员目录。
 
 上传完成后，点击：
 
@@ -166,15 +171,20 @@ embedding_cache.pkl
 其中：
 
 - `gallery.pkl` 保存每个人的平均人脸特征
-- `embedding_cache.pkl` 保存每张已处理图片的人脸特征缓存
+- `embedding_cache.pkl` 保存每张已处理注册图片的人脸特征缓存
+
+后续再次建立人脸库时，未变化的注册图片会优先复用缓存；新增或修改过的图片才会重新提取特征。
 
 ### 2. 识别图片或视频
 
 进入“识别图片/视频”页面，上传待识别的图片或视频。
 
-如果是图片，程序会直接进行人脸识别。
+如果是图片，程序会直接进行人脸检测和身份识别。
 
-如果是视频，程序会自动抽取一帧包含人脸的画面进行识别。
+如果是视频，程序会自动抽取包含人脸的画面进行识别。识别完成后，程序会同时保存：
+
+- 原始视频文件
+- 用于识别和预览的抽帧图片
 
 识别完成后，结果会输出到：
 
@@ -189,20 +199,37 @@ output/
   zhangsan/
     test_photo.jpg
   lisi/
+    test_video.mp4
     test_video_frame.jpg
   unknown/
     unknown_photo.jpg
+  no_face/
+    landscape.jpg
+  read_failed/
 ```
+
+视频识别结果中：
+
+- `output_path` 指向原始视频文件
+- `frame_path` 指向用于识别和预览的抽帧图片
+- 图片识别结果的 `frame_path` 通常为空字符串
+
 在“识别图片/视频”页面可以清空 `input/` 上传文件；在“查看结果”页面可以清空 `output/` 识别结果。
+
+### 3. 查看结果
+
+进入“查看结果”页面，可以查看按识别结果分类后的图片和视频。
 
 识别结果说明：
 
-- 已知人员名称：检测到人脸，并成功匹配到人脸库中的人员
-- `unknown`：检测到人脸，但未匹配到已知人员
-- `no_face`：未检测到人脸
-- `read_failed`：文件读取失败
+| 结果 | 含义 |
+|---|---|
+| 已知人员名称 | 检测到人脸，并成功匹配到人脸库中的人员 |
+| `unknown` | 检测到人脸，但未匹配到已知人员 |
+| `no_face` | 未检测到人脸 |
+| `read_failed` | 文件读取失败 |
 
-### 3. 查看特征库状态
+### 4. 查看特征库状态
 
 进入“特征库状态”页面，可以查看：
 
@@ -214,6 +241,49 @@ output/
 
 完整 embedding 向量通常为高维数值，不建议在界面中完整展示。
 
+### 5. 分类结果自检
+
+进入“自检”页面后，可以运行分类结果自检。
+
+自检主要检查：
+
+- `input/` 中是否存在未生成输出结果的文件
+- 分类结果中是否存在 `read_failed`
+- `classification_results.json` 中记录的 `output_path` 是否有效
+- 视频结果中记录的 `frame_path` 是否有效
+- 是否可以对部分问题文件重新分类
+
+如果问题文件重分类成功，程序会更新对应输出结果，并同步更新 `output/classification_results.json`，避免下次自检继续读取旧状态。
+
+## 输出文件说明
+
+识别完成后，`output/` 中可能包含：
+
+```text
+output/
+  classification_results.json
+  zhangsan/
+  lisi/
+  unknown/
+  no_face/
+  read_failed/
+```
+
+其中：
+
+- `classification_results.json` 保存本次识别的结构化结果
+- 已知人员目录保存匹配成功的文件
+- `unknown/` 保存检测到人脸但未匹配到已知人员的文件
+- `no_face/` 保存未检测到人脸的文件
+- `read_failed/` 用于保存或标记读取失败的文件结果
+
+导出 ZIP 时，程序会将当前 `output/` 中的分类结果打包为：
+
+```text
+classified_output.zip
+```
+
+该文件属于运行结果，不应提交到 Git 仓库。
 ## 阈值说明
 
 项目使用余弦相似度进行人脸匹配。默认阈值为：
@@ -263,7 +333,7 @@ CUDAExecutionProvider
 
 说明 ONNX Runtime 已识别到 CUDA GPU。
 
-例如：
+示例：
 
 ```text
 ['CUDAExecutionProvider', 'CPUExecutionProvider']
@@ -355,6 +425,31 @@ python -c "from insightface.app import FaceAnalysis; print('InsightFace OK')"
 
 如果项目只使用 CPU，且环境中 PyTorch 导入失败，可以优先尝试重新安装相关依赖，或使用干净环境重新部署。
 
+## 开发与检查
+
+提交代码前建议运行：
+
+```bash
+python -m py_compile app.py classifier.py self_check.py
+```
+
+如果修改了其他模块，也可以一并检查：
+
+```bash
+python -m py_compile app.py classifier.py self_check.py face_engine.py gallery_builder.py video_utils.py image_io.py pkl_viewer.py
+```
+
+建议提交前确认以下内容没有被 Git 跟踪：
+
+```text
+dataset/
+input/
+output/
+gallery.pkl
+embedding_cache.pkl
+classified_output.zip
+__pycache__/
+```
 ## 数据与隐私说明
 
 本项目仅用于本地学习和实验。人脸图片、视频和人脸特征均属于敏感生物识别数据。
@@ -435,7 +530,8 @@ classified_output.zip
 
 - 注册人脸库的视频建议只包含单人
 - 上传人脸库的图片应尽量清晰、正脸、光线正常
-- 如果视频中存在多人，程序默认会优先选取画面中较大的人脸
+- 如果注册视频中存在多人，程序默认会优先选取画面中较大的人脸
+- 视频识别结果会保存原始视频和抽帧图片，输出文件体积可能较大
 - 本项目不包含完整活体检测能力
 - 本项目不建议直接用于真实门禁、考勤或安防系统
 - `gallery.pkl` 和 `embedding_cache.pkl` 虽然不是原始图片，但仍然属于人脸生物特征数据，不应上传到公开仓库

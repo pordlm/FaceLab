@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 
@@ -71,8 +72,10 @@ def classify_all(
             "filename": "...",
             "label": "...",
             "score": 0.51,
+            "decision": "...",
             "source_info": "...",
-            "output_path": "..."
+            "output_path": "...",
+            "frame_path": "..."
           }
         ]
     """
@@ -106,6 +109,7 @@ def classify_all(
                     "decision": "read_failed",
                     "source_info": source_info,
                     "output_path": "",
+                    "frame_path": "",
                 }
             )
 
@@ -134,11 +138,25 @@ def classify_all(
         person_output_dir.mkdir(parents=True, exist_ok=True)
 
         if is_video_file(file_path):
-            dst_path = person_output_dir / f"{file_path.stem}_frame.jpg"
-            write_image(dst_path, img)
+            # 保存抽帧图片
+            frame_dst = person_output_dir / f"{file_path.stem}_frame.jpg"
+            write_image(frame_dst, img)
+
+            if face is not None and emb is not None:
+                # 人脸检测成功：同时复制原始视频
+                video_dst = person_output_dir / file_path.name
+                shutil.copy2(file_path, video_dst)
+                result_output_path = str(video_dst)
+                result_frame_path = str(frame_dst)
+            else:
+                # no_face：只保留抽帧图片
+                result_output_path = str(frame_dst)
+                result_frame_path = ""
         else:
             dst_path = person_output_dir / file_path.name
             shutil.copy2(file_path, dst_path)
+            result_output_path = str(dst_path)
+            result_frame_path = ""
 
         results.append(
             {
@@ -147,9 +165,14 @@ def classify_all(
                 "score": float(score),
                 "decision": decision,
                 "source_info": source_info,
-                "output_path": str(dst_path),
+                "output_path": result_output_path,
+                "frame_path": result_frame_path,
             }
         )
 
+
+    results_path = output_dir / "classification_results.json"
+    with open(results_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
 
     return results

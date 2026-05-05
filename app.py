@@ -19,6 +19,7 @@ from config import (
 from face_engine import create_face_app
 from gallery_builder import build_gallery
 from classifier import classify_all
+from self_check import run_self_check
 
 
 @st.cache_resource
@@ -187,8 +188,8 @@ def main():
 
     face_app = load_cached_face_app(use_gpu)
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-    ["1. 建立人脸库", "2. 识别图片/视频", "3. 查看结果", "4. 特征库状态"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["1. 建立人脸库", "2. 识别图片/视频", "3. 查看结果", "4. 特征库状态", "5. 自检结果"]
     )
 
     if "known_uploader_key" not in st.session_state:
@@ -358,19 +359,25 @@ def main():
                     if p.suffix.lower() in IMAGE_EXTS
                 ]
 
-                if not image_paths:
+                if image_paths:
+                    cols = st.columns(4)
+
+                    for idx, image_path in enumerate(image_paths):
+                        with cols[idx % 4]:
+                            st.image(
+                                str(image_path),
+                                caption=image_path.name,
+                                use_container_width=True
+                            )
+                else:
                     st.write("无图片结果。")
-                    continue
 
-                cols = st.columns(4)
-
-                for idx, image_path in enumerate(image_paths):
-                    with cols[idx % 4]:
-                        st.image(
-                            str(image_path),
-                            caption=image_path.name,
-                            use_container_width=True
-                        )
+                video_paths = [
+                    p for p in sorted(label_dir.iterdir())
+                    if p.suffix.lower() in VIDEO_EXTS
+                ]
+                for video_path in video_paths:
+                    st.video(str(video_path))
 
         st.divider()
 
@@ -432,6 +439,69 @@ def main():
                 )
             else:
                 st.write("缓存里还没有图片记录。")
+
+
+
+    with tab5:
+        st.subheader("分类结果自检")
+
+        st.markdown(
+            "检查分类后的输出是否完整：找出**读取失败**或**遗漏**的文件，"
+            "并尝试重新分类。"
+        )
+
+        if st.button("运行自检", key="run_self_check"):
+            if not OUTPUT_DIR.exists() or not any(OUTPUT_DIR.iterdir()):
+                st.warning("还没有分类结果，请先在「识别图片/视频」里点击「开始识别」。")
+            else:
+                with st.spinner("正在自检..."):
+                    try:
+                        result = run_self_check(
+                            face_app=face_app,
+                            threshold=threshold
+                        )
+                    except Exception as e:
+                        st.error(f"自检过程发生异常: {e}")
+                        return
+
+                # 摘要统计
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Input 文件数", result["input_count"])
+                with col2:
+                    st.metric("Output 文件数", result["output_count"])
+                with col3:
+                    st.metric("读取失败 (read_failed)", result["read_failed_count"])
+                with col4:
+                    st.metric("遗漏文件", result["missing_count"])
+
+                if not result["results_loaded"]:
+                    st.warning("未找到 classification_results.json，可能尚未执行过分类。")
+
+                st.divider()
+
+                # 重分类结果
+                if result["reclassify_success"]:
+                    st.success(f"重分类成功: {len(result['reclassify_success'])} 个文件")
+                    with st.expander("查看成功列表"):
+                        for name in result["reclassify_success"]:
+                            st.write(f"- {name}")
+
+                if result["reclassify_failed"]:
+                    st.error(f"分类失败: {len(result['reclassify_failed'])} 个文件")
+                    with st.expander("查看失败列表"):
+                        for name in result["reclassify_failed"]:
+                            st.write(f"- {name}")
+                elif not result["reclassify_failed"] and (
+                    result["read_failed_count"] > 0 or result["missing_count"] > 0
+                ):
+                    st.success("所有问题文件均已成功重分类！")
+
+                if (
+                    result["read_failed_count"] == 0
+                    and result["missing_count"] == 0
+                ):
+                    st.success("自检通过，未发现任何问题。")
 
 
 
