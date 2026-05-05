@@ -16,23 +16,31 @@ def extract_best_frame_from_video(video_path: Path, face_app, sample_count: int 
     从视频中抽取若干帧，选择检测到最大人脸的一帧。
 
     返回:
-        best_frame, info
+        (best_frame, info, status)
+        status 取值:
+            "ok"         — 成功检测到人脸
+            "no_face"    — 视频可读取，但所有采样帧均未检测到人脸
+            "read_failed" — 视频无法打开或无法读取帧数
 
-    如果失败:
-        None, reason
+    如果 status == "ok":
+        best_frame 是最大人脸帧, info 是人脸信息
+    如果 status == "no_face":
+        best_frame 是最后成功读取的帧（用于输出到 no_face）, info 是说明
+    如果 status == "read_failed":
+        best_frame 是 None, info 是错误原因
     """
     video_path = Path(video_path)
 
     cap = cv2.VideoCapture(str(video_path))
 
     if not cap.isOpened():
-        return None, "视频无法打开，建议视频文件名使用英文"
+        return None, "视频无法打开，建议视频文件名使用英文", "read_failed"
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     if total_frames <= 0:
         cap.release()
-        return None, "无法读取视频帧数"
+        return None, "无法读取视频帧数", "read_failed"
 
     start = int(total_frames * 0.15)
     end = int(total_frames * 0.85)
@@ -46,6 +54,7 @@ def extract_best_frame_from_video(video_path: Path, face_app, sample_count: int 
     best_frame = None
     best_area = 0.0
     best_index = None
+    last_valid_frame = None
 
     for frame_index in frame_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_index))
@@ -53,6 +62,8 @@ def extract_best_frame_from_video(video_path: Path, face_app, sample_count: int 
 
         if not success or frame is None:
             continue
+
+        last_valid_frame = frame.copy()
 
         faces = face_app.get(frame)
         face = get_largest_face(faces)
@@ -70,9 +81,11 @@ def extract_best_frame_from_video(video_path: Path, face_app, sample_count: int 
     cap.release()
 
     if best_frame is None:
-        return None, "视频中没有检测到可用人脸"
+        if last_valid_frame is not None:
+            return last_valid_frame, "视频中没有检测到可用人脸", "no_face"
+        return None, "视频无法解码任何帧", "read_failed"
 
-    return best_frame, f"已选择第 {best_index} 帧，人脸面积 {best_area:.0f}"
+    return best_frame, f"已选择第 {best_index} 帧，人脸面积 {best_area:.0f}", "ok"
 
 
 def extract_face_frames_from_video(

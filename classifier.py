@@ -24,19 +24,23 @@ def load_image_or_video_frame(file_path: Path, face_app):
     """
     图片：直接读取
     视频：自动抽取最佳人脸帧
+
+    返回:
+        (img, info, status)
+        status 取值: "ok" / "no_face" / "read_failed"
     """
     file_path = Path(file_path)
 
     if is_video_file(file_path):
-        frame, info = extract_best_frame_from_video(file_path, face_app)
-        return frame, info
+        frame, info, status = extract_best_frame_from_video(file_path, face_app)
+        return frame, info, status
 
     img = read_image(file_path)
 
     if img is None:
-        return None, "图片无法读取"
+        return None, "图片无法读取", "read_failed"
 
-    return img, "图片读取成功"
+    return img, "图片读取成功", "ok"
 
 
 def predict_person(embedding, gallery, threshold: float):
@@ -98,9 +102,31 @@ def classify_all(
         if not is_supported_file(file_path):
             continue
 
-        img, source_info = load_image_or_video_frame(file_path, face_app)
+        img, source_info, status = load_image_or_video_frame(file_path, face_app)
 
-        if img is None:
+        if img is None or status == "no_face":
+            if status == "no_face" and img is not None:
+                # 视频可读取但未检测到人脸：输出抽帧图片到 no_face
+                label = "no_face"
+                decision = "no_face"
+                person_output_dir = output_dir / label
+                person_output_dir.mkdir(parents=True, exist_ok=True)
+                frame_dst = person_output_dir / f"{file_path.stem}_frame.jpg"
+                write_image(frame_dst, img)
+                results.append(
+                    {
+                        "filename": file_path.name,
+                        "label": label,
+                        "score": 0.0,
+                        "decision": decision,
+                        "source_info": source_info,
+                        "output_path": str(frame_dst),
+                        "frame_path": "",
+                    }
+                )
+                continue
+
+            # 真读取失败（status == "read_failed" 或无图的 no_face）
             results.append(
                 {
                     "filename": file_path.name,

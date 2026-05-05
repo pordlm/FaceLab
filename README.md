@@ -247,13 +247,12 @@ output/
 
 自检主要检查：
 
-- `input/` 中是否存在未生成输出结果的文件
-- 分类结果中是否存在 `read_failed`
-- `classification_results.json` 中记录的 `output_path` 是否有效
-- 视频结果中记录的 `frame_path` 是否有效
-- 是否可以对部分问题文件重新分类
+- `classification_results.json` 中是否存在 `decision` 为 `read_failed` 的条目
+- `classification_results.json` 中 `output_path` 或 `frame_path` 指向的文件是否存在
+- `input/` 目录下的文件在 `classification_results.json` 中是否有对应记录
+- 是否可以对上述问题文件（读取失败 + 遗漏 + 路径缺失）重新分类
 
-如果问题文件重分类成功，程序会更新对应输出结果，并同步更新 `output/classification_results.json`，避免下次自检继续读取旧状态。
+如果问题文件重分类成功，程序会将结果写入对应的 `output/` 子目录，并同步更新 `output/classification_results.json`，避免下次自检继续读取旧状态。
 
 ## 输出文件说明
 

@@ -38,61 +38,71 @@ def scan_input_files(input_dir: Path = INPUT_DIR) -> list[Path]:
     )
 
 
-def scan_output_files(output_dir: Path = OUTPUT_DIR) -> set[str]:
-    """收集 output/ 子目录下所有文件名（用于与 input 对比）。"""
-    if not output_dir.exists():
-        return set()
-    names = set()
-    for label_dir in output_dir.iterdir():
-        if not label_dir.is_dir():
-            continue
-        for f in label_dir.iterdir():
-            if f.is_file():
-                names.add(f.name)
-    return names
+def count_json_output_files(results: list[dict] | None) -> int:
+    """统计 classification_results.json 中 output_path 非空的条目数。"""
+    if not results:
+        return 0
+    return sum(1 for r in results if r.get("output_path"))
 
 
-def _get_expected_output_name(input_file: Path) -> str:
-    """根据 input 文件名推导 output 中的预期文件名。视频输出原始视频文件。"""
-    return input_file.name
+def _resolve_path(raw_path: str) -> Path:
+    """将 JSON 中的路径解析为绝对路径。兼容 Windows 绝对路径和相对路径。"""
+    if not raw_path:
+        return Path()
+    p = Path(raw_path)
+    if p.is_absolute():
+        return p
+    # 相对路径：相对于仓库根目录解析
+    from config import BASE_DIR
+    return (BASE_DIR / p).resolve()
 
 
 def find_problems(
     input_files: list[Path],
-    output_names: set[str],
     results: list[dict] | None,
 ) -> tuple[list[Path], list[Path]]:
     """
-    找出问题文件。
+    以 classification_results.json 为权威来源找出问题文件。
 
     返回:
         (read_failed_files, missing_files)
 
-    read_failed_files: 分类结果中 decision == "read_failed" 的文件（Path 指向 input/）
-    missing_files: input 中有但 output 中找不到对应结果的文件（Path 指向 input/）
+    read_failed_files: decision == "read_failed" 的条目（直接作为重试候选，不验证路径）
+    missing_files: JSON 中无记录，或 output_path/frame_path 指向的文件不存在
     """
     read_failed_files: list[Path] = []
     missing_files: list[Path] = []
 
-    # 构建 filename → result 的映射（不含路径，只有文件名）
+    # 构建 filename → result 映射
     result_map: dict[str, dict] = {}
     if results:
         for r in results:
             result_map[r["filename"]] = r
 
     for input_file in input_files:
-        expected_name = _get_expected_output_name(input_file)
-        result = result_map.get(input_file.name)
+        entry = result_map.get(input_file.name)
 
-        # 检查是否为 read_failed
-        if result and result.get("decision") == "read_failed":
+        # 条件 1：JSON 中无此文件记录 → missing
+        if entry is None:
+            missing_files.append(input_file)
+            continue
+
+        decision = entry.get("decision", "")
+
+        # 条件 2：read_failed → 直接作为重试候选，不验证路径
+        if decision == "read_failed":
             read_failed_files.append(input_file)
+            continue
 
-        # 检查 output 中是否存在对应文件
-        if expected_name not in output_names:
-            # 避免重复加入（read_failed 的文件可能同时也不在 output 中）
-            if input_file not in read_failed_files:
-                missing_files.append(input_file)
+        # 条件 3：非 read_failed — 验证 output_path / frame_path 存在性
+        output_path = entry.get("output_path", "")
+        frame_path = entry.get("frame_path", "")
+
+        output_missing = bool(output_path) and not _resolve_path(output_path).exists()
+        frame_missing = bool(frame_path) and not _resolve_path(frame_path).exists()
+
+        if output_missing or frame_missing:
+            missing_files.append(input_file)
 
     return read_failed_files, missing_files
 
@@ -115,9 +125,34 @@ def reclassify_files(
     reclassify_results: list[dict] = []
 
     for file_path in file_paths:
-        img, source_info = load_image_or_video_frame(file_path, face_app)
+        img, source_info, status = load_image_or_video_frame(file_path, face_app)
 
-        if img is None:
+        if img is None or status == "no_face":
+            if status == "no_face" and img is not None:
+                # 视频可读取但未检测到人脸：输出抽帧图片到 no_face
+                label = "no_face"
+                person_output_dir = output_dir / label
+                person_output_dir.mkdir(parents=True, exist_ok=True)
+                frame_dst = person_output_dir / f"{file_path.stem}_frame.jpg"
+                frame_ok = write_image(frame_dst, img)
+                if not frame_ok:
+                    failed_list.append(file_path.name)
+                    continue
+                success_list.append(file_path.name)
+                reclassify_results.append(
+                    {
+                        "filename": file_path.name,
+                        "label": label,
+                        "score": 0.0,
+                        "decision": "no_face",
+                        "source_info": source_info,
+                        "output_path": str(frame_dst),
+                        "frame_path": "",
+                    }
+                )
+                continue
+
+            # 真读取失败
             failed_list.append(file_path.name)
             continue
 
@@ -250,11 +285,10 @@ def run_self_check(
     }
     """
     input_files = scan_input_files(input_dir)
-    output_names = scan_output_files(output_dir)
     results = load_classification_results(output_dir)
 
     read_failed_files, missing_files = find_problems(
-        input_files, output_names, results
+        input_files, results
     )
 
     # 合并需要重试的文件（去重）
@@ -271,7 +305,7 @@ def run_self_check(
 
     return {
         "input_count": len(input_files),
-        "output_count": len(output_names),
+        "output_count": count_json_output_files(results),
         "read_failed_count": len(read_failed_files),
         "missing_count": len(missing_files),
         "reclassify_success": success_list,
