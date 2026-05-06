@@ -1,8 +1,10 @@
 # FaceLab
 
-FaceLab 是一个基于 InsightFace 和 Streamlit 的本地人脸识别实验项目。项目支持从图片或视频中提取人脸特征，建立本地人脸特征库，并对待识别图片或视频进行身份匹配。
+FaceLab 是一个基于 **InsightFace + ONNX Runtime + Streamlit** 的本地人脸识别实验项目。项目支持从图片或视频中提取人脸特征，建立本地人脸特征库，并对待识别图片或视频进行身份匹配。
 
-本项目主要用于本地学习、实验和原型验证，不适合作为生产环境门禁、考勤或安防系统直接使用。
+> 本项目主要用于本地学习、实验和原型验证，不适合作为生产环境门禁、考勤或安防系统直接使用。
+
+---
 
 ## 功能特性
 
@@ -11,8 +13,14 @@ FaceLab 是一个基于 InsightFace 和 Streamlit 的本地人脸识别实验项
 - 支持图片识别
 - 支持视频抽帧识别
 - 支持先判断图片或视频帧中是否存在人脸，再进行身份识别
-- 支持将识别结果区分为已知人员、`unknown`、`no_face` 和 `read_failed`
-- 支持视频识别结果同时输出原始视频和用于预览的抽帧图片
+- 支持将识别结果区分为：
+  - 已知人员
+  - `unknown`
+  - `no_face`
+  - `read_failed`
+- 支持视频识别结果同时输出：
+  - 原始视频文件
+  - 用于识别和预览的抽帧图片
 - 支持人脸特征缓存，避免重复提取已有注册图片特征
 - 支持在图形化界面中查看已入库人员信息
 - 支持查看 `gallery.pkl` 和 `embedding_cache.pkl` 的概要状态
@@ -21,17 +29,26 @@ FaceLab 是一个基于 InsightFace 和 Streamlit 的本地人脸识别实验项
 - 支持将识别结果按人员名称输出到不同文件夹
 - 支持将分类结果导出为 ZIP 文件
 - 支持在界面中清空 `input/` 上传文件和 `output/` 识别结果
+- 支持 GPU 模式下使用 `CUDAExecutionProvider`
+- 支持可选 profiling 日志，用于分析 detection、recognition、视频抽帧、文件 IO 等耗时
+- 已对 InsightFace 调用路径做轻量优化：
+  - 只加载 FaceLab 实际使用的 `detection` 和 `recognition` 模型
+  - 视频抽帧阶段仅执行 detection，不再做无用 recognition
+
+---
 
 ## 技术栈
 
 - Python
 - Streamlit
 - InsightFace
-- ONNX Runtime
+- ONNX Runtime / ONNX Runtime GPU
 - OpenCV
 - NumPy
 - Pillow
 - scikit-learn
+
+---
 
 ## 项目结构
 
@@ -46,6 +63,7 @@ facelab/
   video_utils.py
   image_io.py
   pkl_viewer.py
+  profiler.py
   start.ps1
   requirements.txt
   README.md
@@ -60,6 +78,8 @@ facelab/
     .gitkeep
 ```
 
+---
+
 ## 主要文件说明
 
 | 文件 | 说明 |
@@ -73,22 +93,38 @@ facelab/
 | `video_utils.py` | 视频抽帧相关逻辑 |
 | `image_io.py` | 图片读取与保存工具 |
 | `pkl_viewer.py` | 读取并展示特征库和缓存文件的概要信息 |
+| `profiler.py` | 可选 profiling 工具模块，受 `FACELAB_PROFILE=1` 控制 |
 | `start.ps1` | Windows PowerShell 启动脚本 |
+
+---
 
 ## 安装环境
 
-建议使用独立的 Python 环境，避免污染系统环境或 Anaconda 的 base 环境。
+建议使用独立 Python 环境，避免污染系统环境或 Anaconda 的 `base` 环境。
 
-推荐 Python 版本：`3.10`
+推荐 Python 版本：
+
+```text
+Python 3.10 或 3.11
+```
 
 ### 使用 Conda 创建环境
+
+```bash
+conda create -n facelab python=3.11 -y
+conda activate facelab
+```
+
+也可以使用 Python 3.10：
 
 ```bash
 conda create -n facelab python=3.10 -y
 conda activate facelab
 ```
 
-### 安装 CPU 版本依赖
+---
+
+## 安装 CPU 版本依赖
 
 ```bash
 pip install -r requirements.txt
@@ -107,6 +143,8 @@ scikit-learn
 ```
 
 CPU 版本适合普通电脑运行，不需要 NVIDIA 显卡。
+
+---
 
 ## 启动项目
 
@@ -136,6 +174,9 @@ Set-Location $ProjectDir
 
 python -m streamlit run app.py
 ```
+
+---
+
 ## 使用流程
 
 ### 1. 建立人脸库
@@ -174,6 +215,8 @@ embedding_cache.pkl
 - `embedding_cache.pkl` 保存每张已处理注册图片的人脸特征缓存
 
 后续再次建立人脸库时，未变化的注册图片会优先复用缓存；新增或修改过的图片才会重新提取特征。
+
+---
 
 ### 2. 识别图片或视频
 
@@ -216,6 +259,8 @@ output/
 
 在“识别图片/视频”页面可以清空 `input/` 上传文件；在“查看结果”页面可以清空 `output/` 识别结果。
 
+---
+
 ### 3. 查看结果
 
 进入“查看结果”页面，可以查看按识别结果分类后的图片和视频。
@@ -229,6 +274,8 @@ output/
 | `no_face` | 未检测到人脸 |
 | `read_failed` | 文件读取失败 |
 
+---
+
 ### 4. 查看特征库状态
 
 进入“特征库状态”页面，可以查看：
@@ -241,6 +288,8 @@ output/
 
 完整 embedding 向量通常为高维数值，不建议在界面中完整展示。
 
+---
+
 ### 5. 分类结果自检
 
 进入“自检”页面后，可以运行分类结果自检。
@@ -250,9 +299,17 @@ output/
 - `classification_results.json` 中是否存在 `decision` 为 `read_failed` 的条目
 - `classification_results.json` 中 `output_path` 或 `frame_path` 指向的文件是否存在
 - `input/` 目录下的文件在 `classification_results.json` 中是否有对应记录
-- 是否可以对上述问题文件（读取失败 + 遗漏 + 路径缺失）重新分类
+- 是否可以对上述问题文件重新分类
 
-如果问题文件重分类成功，程序会将结果写入对应的 `output/` 子目录，并同步更新 `output/classification_results.json`，避免下次自检继续读取旧状态。
+如果问题文件重分类成功，程序会将结果写入对应的 `output/` 子目录，并同步更新：
+
+```text
+output/classification_results.json
+```
+
+这样可以避免下次自检继续读取旧状态。
+
+---
 
 ## 输出文件说明
 
@@ -283,6 +340,9 @@ classified_output.zip
 ```
 
 该文件属于运行结果，不应提交到 Git 仓库。
+
+---
+
 ## 阈值说明
 
 项目使用余弦相似度进行人脸匹配。默认阈值为：
@@ -298,11 +358,81 @@ classified_output.zip
 
 可以根据自己的数据在界面中调整阈值。
 
-## GPU 依赖安装
+---
 
-默认情况下，项目使用 CPU 版本的 `onnxruntime`。
+## InsightFace 模型加载优化
 
-如果需要使用 NVIDIA GPU 加速，需要将 `onnxruntime` 替换为 `onnxruntime-gpu`。
+FaceLab 使用 InsightFace 的 `buffalo_l` 模型包，但项目实际只需要：
+
+- `detection`
+- `recognition`
+
+因此当前 `face_engine.py` 中创建 `FaceAnalysis` 时使用：
+
+```python
+app = FaceAnalysis(
+    name="buffalo_l",
+    providers=providers,
+    allowed_modules=["detection", "recognition"],
+)
+```
+
+这样会跳过 FaceLab 不使用的模型：
+
+- `landmark_3d_68`
+- `landmark_2d_106`
+- `genderage`
+
+该优化不改变：
+
+- 模型包：仍使用 `buffalo_l`
+- `det_size`
+- threshold
+- providers 逻辑
+- recognition embedding 逻辑
+- no_face / read_failed 语义
+
+InsightFace 的 ArcFace recognition 对齐使用的是 detection 模型输出的 `kps`，不依赖额外的 landmark 模型。因此跳过上述未使用模型不会降低 FaceLab 当前识别逻辑的准确率。
+
+---
+
+## 视频抽帧优化
+
+视频抽帧阶段只需要判断：
+
+```text
+当前帧是否有人脸，以及最大人脸面积是多少
+```
+
+因此当前 `video_utils.py` 在视频采样阶段直接调用：
+
+```python
+bboxes, _ = face_app.det_model.detect(frame)
+```
+
+而不是：
+
+```python
+face_app.get(frame)
+```
+
+这样视频采样阶段只执行 detection，不再执行无用的 recognition。
+
+正式分类时，程序仍会对最终选出的 `best_frame` 调用完整的 embedding 提取流程：
+
+```text
+best_frame -> extract_embedding -> face_app.get(best_frame)
+```
+
+因此该优化不改变识别结果，只减少视频采样阶段的重复推理。
+
+---
+
+## GPU 依赖安装与 CUDA/cuDNN 支持
+
+默认情况下，项目可以使用 CPU 版本 `onnxruntime` 运行。
+
+如果需要使用 NVIDIA GPU 加速，需要使用 `onnxruntime-gpu`，并确保 CUDA / cuDNN 依赖可以被 Windows 进程找到。
 
 ### 1. 卸载 CPU 版 ONNX Runtime
 
@@ -316,60 +446,101 @@ pip uninstall onnxruntime -y
 pip install onnxruntime-gpu
 ```
 
-### 3. 验证 ONNX Runtime 可用的执行设备
+### 3. 安装或提供 CUDA / cuDNN 依赖
 
-运行：
+以 `onnxruntime-gpu 1.25.1` 为例，实测其 GPU build 使用 CUDA 12.x，并需要 cuDNN 9 相关 DLL。
+
+Windows 下如果缺少 cuDNN 9，可能会出现类似错误：
+
+```text
+Error loading "...onnxruntime_providers_cuda.dll" which depends on "cudnn64_9.dll" which is missing.
+Failed to create CUDAExecutionProvider.
+Require cuDNN 9.* and CUDA 12.*.
+```
+
+可选处理方式：
+
+#### 方式 A：安装 NVIDIA pip 依赖包
+
+```bash
+pip install nvidia-cudnn-cu12
+pip install nvidia-cublas-cu12
+pip install nvidia-cuda-nvrtc-cu12
+```
+
+实际需要哪些包取决于当前 `onnxruntime-gpu` 版本和本机环境。如果已经安装了完整 CUDA / cuDNN，也可以不使用 pip 包方式。
+
+#### 方式 B：手动安装 CUDA / cuDNN
+
+安装与 `onnxruntime-gpu` 版本匹配的：
+
+- NVIDIA Driver
+- CUDA Toolkit
+- cuDNN
+
+并确保相关 `bin` 目录在 `PATH` 中。
+
+### 4. Windows PowerShell 中临时加入 NVIDIA DLL 路径
+
+如果通过 pip 安装了 NVIDIA CUDA/cuDNN 相关包，可以在启动前把其 `bin` 目录加入当前 PowerShell 进程的 `PATH`：
+
+```powershell
+$nvRoot = "E:\Anaconda3\envs\facelab\Lib\site-packages\nvidia"
+$nvBins = Get-ChildItem $nvRoot -Recurse -Directory -Filter bin | Select-Object -ExpandProperty FullName
+$env:PATH = ($nvBins -join ";") + ";" + $env:PATH
+```
+
+然后启动：
+
+```powershell
+E:\Anaconda3\envs\facelab\python.exe -m streamlit run app.py
+```
+
+请根据自己的环境修改 Python 路径和 Conda 环境路径。
+
+### 5. 不要只看 get_available_providers()
+
+下面命令只能说明 ONNX Runtime 环境“看得到” CUDA provider：
 
 ```bash
 python -c "import onnxruntime as ort; print(ort.get_available_providers())"
 ```
 
-如果输出中包含：
+即使输出包含：
 
 ```text
 CUDAExecutionProvider
 ```
 
-说明 ONNX Runtime 已识别到 CUDA GPU。
+也不代表具体模型 session 已经真的用上 CUDA。
 
-示例：
+更可靠的验证方式是检查具体 ONNX session：
+
+```bash
+python -c "from pathlib import Path; import onnxruntime as ort; model=Path.home()/'.insightface'/'models'/'buffalo_l'/'det_10g.onnx'; sess=ort.InferenceSession(str(model), providers=['CUDAExecutionProvider','CPUExecutionProvider']); print(sess.get_providers()); print(sess.get_provider_options())"
+```
+
+理想输出应包含：
 
 ```text
 ['CUDAExecutionProvider', 'CPUExecutionProvider']
 ```
 
-如果只看到：
+如果实际输出只有：
 
 ```text
 ['CPUExecutionProvider']
 ```
 
-说明当前环境没有成功启用 GPU 推理。
+说明 CUDAExecutionProvider 创建失败，ONNX Runtime 已回退到 CPU。
 
-### 4. 在程序中启用 GPU
+### 6. 在程序中启用 GPU
 
-如果项目界面中有“使用 GPU”的选项，勾选后会使用 GPU 推理。
-
-对应代码逻辑通常位于 `face_engine.py` 中：
+在界面中勾选“使用 GPU”后，FaceLab 会使用：
 
 ```python
-from insightface.app import FaceAnalysis
-
-
-def create_face_app(use_gpu: bool = False):
-    if use_gpu:
-        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        ctx_id = 0
-    else:
-        providers = ["CPUExecutionProvider"]
-        ctx_id = -1
-
-    app = FaceAnalysis(
-        name="buffalo_l",
-        providers=providers
-    )
-    app.prepare(ctx_id=ctx_id, det_size=(640, 640))
-    return app
+providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+ctx_id = 0
 ```
 
 CPU 模式使用：
@@ -379,24 +550,76 @@ providers = ["CPUExecutionProvider"]
 ctx_id = -1
 ```
 
-GPU 模式使用：
+如果 GPU 依赖不完整，即使选择 GPU，ONNX Runtime 也可能自动回退到 CPU。此时需要检查 CUDA / cuDNN DLL 是否可被加载。
 
-```python
-providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-ctx_id = 0
+---
+
+## Profiling 性能分析
+
+FaceLab 提供可选 profiling 日志，用于分析各阶段耗时和 ONNX Runtime provider 状态。
+
+默认关闭。
+
+### 开启 profiling
+
+PowerShell：
+
+```powershell
+$env:FACELAB_PROFILE="1"
+python -m streamlit run app.py
 ```
 
-### 5. GPU 环境注意事项
+### 关闭 profiling
 
-使用 GPU 版本时，需要确保本机具备：
+PowerShell：
 
-- NVIDIA 显卡
-- 可用的 NVIDIA 驱动
-- 与 `onnxruntime-gpu` 版本匹配的 CUDA / cuDNN 环境
+```powershell
+Remove-Item Env:\FACELAB_PROFILE -ErrorAction SilentlyContinue
+```
 
-如果 GPU 依赖配置不正确，程序可能会自动回退到 CPU，或者在启动时出现动态库加载错误。
+### 日志位置
 
-如果不确定 GPU 环境是否正确，建议先使用 CPU 版本运行项目。
+开启后会生成：
+
+```text
+profile_logs/profile.jsonl
+```
+
+该文件为 JSON Lines 格式，每行一个事件，可能包含：
+
+- `session.created`
+- `retinaface.session_run`
+- `arcface.session_run`
+- `face_analysis.get`
+- `video.sample_detect`
+- `classify_all`
+- `ui.classify`
+
+示例查询：
+
+```powershell
+Get-Content .\profile_logs\profile.jsonl |
+  Select-String '"providers_actual"'
+```
+
+查看关键耗时：
+
+```powershell
+Get-Content .\profile_logs\profile.jsonl -Tail 100 |
+  Select-String 'retinaface.session_run|arcface.session_run|face_analysis.get|classify_all|ui.classify'
+```
+
+### profiling 的用途
+
+Profiling 不是优化本身，而是用来回答：
+
+- 哪一步最慢
+- detection / recognition 各自耗时是多少
+- 视频抽帧是否慢
+- 是否真正使用了 `CUDAExecutionProvider`
+- 是否发生了 CPU fallback
+
+---
 
 ## PyTorch 说明
 
@@ -412,7 +635,7 @@ Error loading "...torch\lib\fbgemm.dll" or one of its dependencies
 
 建议处理方式：
 
-1. 使用独立 Conda 环境，不要直接使用 Anaconda base 环境
+1. 使用独立 Conda 环境，不要直接使用 Anaconda `base` 环境
 2. 重新安装 PyTorch
 3. 安装或修复 Microsoft Visual C++ Redistributable
 4. 优先确认以下命令可以正常运行：
@@ -423,6 +646,8 @@ python -c "from insightface.app import FaceAnalysis; print('InsightFace OK')"
 ```
 
 如果项目只使用 CPU，且环境中 PyTorch 导入失败，可以优先尝试重新安装相关依赖，或使用干净环境重新部署。
+
+---
 
 ## 开发与检查
 
@@ -435,7 +660,7 @@ python -m py_compile app.py classifier.py self_check.py
 如果修改了其他模块，也可以一并检查：
 
 ```bash
-python -m py_compile app.py classifier.py self_check.py face_engine.py gallery_builder.py video_utils.py image_io.py pkl_viewer.py
+python -m py_compile app.py classifier.py self_check.py config.py face_engine.py gallery_builder.py video_utils.py image_io.py pkl_viewer.py profiler.py
 ```
 
 建议提交前确认以下内容没有被 Git 跟踪：
@@ -447,8 +672,12 @@ output/
 gallery.pkl
 embedding_cache.pkl
 classified_output.zip
+profile_logs/
 __pycache__/
 ```
+
+---
+
 ## 数据与隐私说明
 
 本项目仅用于本地学习和实验。人脸图片、视频和人脸特征均属于敏感生物识别数据。
@@ -462,9 +691,12 @@ output/
 gallery.pkl
 embedding_cache.pkl
 classified_output.zip
+profile_logs/
 ```
 
 本仓库的 `.gitignore` 应默认排除这些文件。
+
+---
 
 ## 推荐的 .gitignore
 
@@ -521,9 +753,13 @@ classified_output.zip
 *.mov
 *.mkv
 
-# Logs
+# Logs and profiling
 *.log
+profile_logs/
+*.jsonl
 ```
+
+---
 
 ## 注意事项
 
@@ -534,6 +770,9 @@ classified_output.zip
 - 本项目不包含完整活体检测能力
 - 本项目不建议直接用于真实门禁、考勤或安防系统
 - `gallery.pkl` 和 `embedding_cache.pkl` 虽然不是原始图片，但仍然属于人脸生物特征数据，不应上传到公开仓库
+- `profile_logs/profile.jsonl` 可能包含本地文件路径、文件名、耗时和识别标签，也不建议上传到公开仓库
+
+---
 
 ## 许可证
 
