@@ -52,3 +52,7 @@ classified_output.zip
 
 # Logs
 *.log
+
+# Profiling logs
+profile_logs/
+*.jsonl
